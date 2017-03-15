@@ -1,0 +1,1070 @@
+---
+title: "Simulation results of the functions in RSCA (for functions CDfriedman.R, CDpre.R, cv_friedman.R, and cv_CDpreKf.R"
+author: "Zhengguo Gu"
+date: "January 28, 2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+# General findings of the simulations
+The simulations have been performed on windows PC. The algrithms work well in general. It should be noted that cross-validation procedures (plus 1SE rule) tend to give conservative values for tuning parameters (i.e., more variables are selected than necessary). More research on model selection in regularized SCA methods is needed. 
+
+# The purpose of simulations
+This file contains simulation results of some of the functions in the package RSCA. The reason of doing simulations instead of having build-in test functions is because most of the functions rely on MM prosedure with multi-starts and regulariztion. This means that the results might differ due to the existence of local minimum. 
+
+These simulation results will be made public on github (url to be added) so that users can learn to use and evaluate the algorithms included in this package. 
+
+#Install the packages (ingore this once the package is published on CRAN)
+
+First download the package "RSCA_0.1.1.tar.gz" then run the following line\
+*install.packages(pkg="RSCA_0.1.2.tar.gz", repos = NULL)*\
+mac: *install.packages(pkg="/Users/zhengguogu/surfdrive/research - simultaneous component methods/Project 2 software Simultaneous/Rpackage/mac/RSCA_0.1.4.tar.gz", repos = NULL)* \
+
+(It seems that the package needs to be downloaded to C:/Users/.../Documents.) The following function shows which functions are included in the SCA package. We are going to test all the functions. 
+```{r}
+help(package=RSCA)
+```
+
+# Simulations for CDfriedman.R 
+
+## situation 1 on *windows PC* (index nr. SimCDfriedman00001)
+(Also tested on *apple macbook pro*. The results are idential.)
+
+2 blocks, 5 components: (note that this is with respect to the P matrix)\
+0 0 0 1 1\
+1 1 1 0 0\
+Furthermore, the distinctive components are sparse.\
+(note: sparse distinctive component here means some of the loadings in the distictive
+component are 0's. See the code below.)\
+```{r, eval=FALSE}  
+set.seed(112)
+
+I <- 28
+J1 <- 144
+J2 <-44
+Jk <- c(J1, J2)
+sumJk <- sum(J1 + J2)
+R <- 5
+Comm <- 1 #not used
+
+PropNoise <- 0.05
+Perc0 <- 0.3
+
+NRSTARTS <- 20
+Ndataset <- 50
+MAXITER <- 400
+
+LASSO <- .3 #.3
+GROUPLASSO <- .1  #.1
+
+Tucker <- array()
+ProportionComm <- array()
+ProportionDist <- array()
+Proportion <- array()
+
+PoutBest <- list()
+ToutBest <- list()
+TuckerValues <- array()
+PoutBestPermu <- list()
+
+for (Nd in 1:Ndataset){
+
+  DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+  DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+  DATA <- cbind(DATA1, DATA2)
+
+  svddata <- svd(DATA, R, R)
+  Ttrue <- svddata$u
+  PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen values are needed.
+
+  PTrueCBlock1 <- PTrueC[1:J1,]
+  PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+
+  v1 <- c(1, 2, 3)
+  PTrueCBlock1[, v1] <- 0
+  v2 <- c(4, 5)
+  PTrueCBlock2[, v2] <- 0
+
+
+
+  PTrueCBlock1_vec <- as.vector(PTrueCBlock1[, v2])
+  v <- sample(1:(J1*2), size = round(Perc0*(J1*2)), replace=F)
+  PTrueCBlock1_vec[v] <- 0
+  PTrueCBlock1[, v2] <- matrix(PTrueCBlock1_vec, nrow = J1, ncol = 2)
+
+  PTrueCBlock2_vec <- as.vector(PTrueCBlock2[, v1])
+  v <- sample(1:(J2*3), size = round(Perc0*(J2*3)), replace=F)
+  PTrueCBlock2_vec[v] <- 0
+  PTrueCBlock2[, v1] <- matrix(PTrueCBlock2_vec, nrow = J2, ncol = 3)
+
+  PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2)
+
+  XTrue <- Ttrue %*% t(PTrueCnew)
+  SSXtrue <- sum(XTrue ^ 2)
+
+  Noise <- matrix(rnorm(I*(J1+J2), mean = 0, sd = 1), I, J1+J2)
+  SSNoise <- sum(Noise ^ 2)
+  g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+  NoiseNew <- g*Noise
+  SSNoiseNew <- sum(NoiseNew ^ 2)
+  Xgenerate <- XTrue + NoiseNew
+  SSXgenerate <- sum(Xgenerate ^ 2)
+  NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+
+
+  Pout3d <- list()
+  Tout3d <- list()
+  LOSS <- array()
+  LOSSVEC <- list()
+  IterVec <- list()
+
+  for (i in 1:NRSTARTS){
+    VarSelectResult <- CDfriedman(Xgenerate, Jk, R, LASSO, GROUPLASSO, MAXITER)
+    Pout3d[[i]] <- VarSelectResult$Pmatrix
+    Tout3d[[i]] <- VarSelectResult$Tmatrix
+    LOSS[i] <- VarSelectResult$Loss
+    LOSSVEC[[i]] <- VarSelectResult$Lossvec
+    IterVec[[i]] <- VarSelectResult$iter
+  }
+  k <- which(LOSS == min(LOSS))
+  if (length(k)>1){
+    pos <- sample(1:length(k), 1)
+    k <- k[pos]
+  }
+  PoutBest[[Nd]] <- Pout3d[[k]]
+  ToutBest[[Nd]] <- Tout3d[[k]]
+
+  TuckerResults <- TuckerCoef(Ttrue, Tout3d[[k]])
+  TuckerValues[Nd] <- TuckerResults$tucker_value
+  PoutBest[[Nd]] <- PoutBest[[Nd]][, TuckerResults$perm]
+
+  indSelectedC <- which(PoutBest[[Nd]] != 0)
+  indDropedC <- which(PoutBest[[Nd]] == 0)
+  Proportion[Nd] <- (sum(PTrueCnew[indSelectedC] != 0) + sum(PTrueCnew[indDropedC] == 0))/(sumJk*R)
+}
+
+Proportion
+TuckerValues
+
+```
+The **proportion of correctedly recoverd variables** is  \
+[1] 0.9478723 0.9276596 0.9414894 0.9468085 0.9425532 0.9244681 0.9308511 0.9478723\
+[9] 0.9244681 0.9042553 0.9361702 0.9319149 0.9372340 0.9436170 0.9478723 0.9425532\
+[17] 0.9244681 0.9287234 0.9382979 0.9297872 0.9351064 0.9372340 0.9308511 0.9404255\
+[25] 0.9404255 0.9351064 0.9372340 0.9414894 0.9404255 0.9276596 0.9500000 0.9212766\
+[33] 0.9276596 0.9351064 0.9414894 0.9510638 0.9361702 0.9372340 0.9297872 0.9457447\
+[41] 0.9287234 0.9393617 0.9351064 0.9425532 0.9319149 0.9382979 0.9446809 0.9457447\
+[49] 0.9510638 0.9372340\
+
+The **tucker** congruence is \
+ [1] 0.9958993 0.9953728 0.9959999 0.9985971 0.9918415 0.9696057 0.9990356 0.9978643\
+ [9] 0.9979272 0.9695968 0.9987453 0.9962356 0.9987560 0.9979124 0.9986516 0.9985495\
+[17] 0.9483958 0.9977524 0.9989195 0.9498237 0.9987658 0.9956742 0.9981714 0.9981825\
+[25] 0.9992371 0.9964812 0.9955389 0.9950330 0.9945938 0.9987980 0.9986244 0.9987235\
+[33] 0.9988823 0.9060508 0.9987305 0.9976870 0.9892672 0.9982623 0.9970873 0.9988555\
+[41] 0.9826636 0.9962939 0.9911637 0.9970593 0.9944504 0.9984789 0.9982995 0.9985103\
+[49] 0.9975258 0.9939722\
+
+The simulation results have been saved to SimCDfriedman00001.RData. In general, the algorithm works well in this setting. 
+
+## situation 2 on *windows PC* (index nr. SimCDfriedman00002)
+(Also tested on *apple macbook pro*. The results are idential.)
+
+3 blocks, 3 components:\
+1 1 0\
+1 0 1\
+1 1 0\
+Furthermore, the distinctive components are sparse.\
+(note: sparse distinctive component here means some of the loadings in the distictive
+component are 0's. See the code below.)\
+```{r, eval=FALSE}
+set.seed(112)
+
+I <- 28
+J1 <- 44
+J2 <-44
+J3 <- 44
+Jk <- c(J1, J2, J3)
+sumJk <- sum(J1 + J2 + J3)
+R <- 3
+Comm <- 1
+
+PropNoise <- 0.05
+Perc0 <- 0.3
+
+NRSTARTS <- 20
+Ndataset <- 50
+MAXITER <- 400
+
+LASSO <- 0.2
+GROUPLASSO <- 0.1
+
+Tucker <- array()
+ProportionComm <- array()
+ProportionDist <- array()
+Proportion <- array()
+
+PoutBest <- list()
+ToutBest <- list()
+TuckerValues <- array()
+PoutBestPermu <- list()
+
+for (Nd in 1:Ndataset){
+
+  DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+  DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+  DATA3 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J3)
+  DATA <- cbind(DATA1, DATA2, DATA3)
+
+  svddata <- svd(DATA, R, R)
+  Ttrue <- svddata$u
+  PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen values are needed.
+
+  PTrueCBlock1 <- PTrueC[1:J1,]
+  PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+  PTrueCBlock3 <- PTrueC[(J1+J2+1):(J1+J2+J3),]
+
+  # 3 blocks, 3 components:
+  # 1 1 0
+  # 1 0 1
+  # 1 1 0
+  PTrueCBlock1[, 3] <- 0
+  PTrueCBlock2[, 2] <- 0
+  PTrueCBlock3[, 3] <- 0
+  PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2, PTrueCBlock3)
+
+  v1 <- sample(1:sumJk, size = round(Perc0*sumJk), replace=F)
+  PTrueCnew[v1, 1] <- 0
+  v2 <- sample(1:J1, size = round(Perc0*J1), replace=F)
+  PTrueCnew[v2, 2] <- 0
+  v2 <- sample(89:132, size = round(Perc0*J3), replace=F)
+  PTrueCnew[v2, 2] <- 0
+  v3 <- sample(45:88, size = round(Perc0*44), replace=F)
+  PTrueCnew[v3, 3] <- 0
+
+  XTrue <- Ttrue %*% t(PTrueCnew)
+  SSXtrue <- sum(XTrue ^ 2)
+
+  Noise <- matrix(rnorm(I*(J1+J2+J3), mean = 0, sd = 1), I, J1+J2+J3)
+  SSNoise <- sum(Noise ^ 2)
+  g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+  NoiseNew <- g*Noise
+  SSNoiseNew <- sum(NoiseNew ^ 2)
+  Xgenerate <- XTrue + NoiseNew
+  SSXgenerate <- sum(Xgenerate ^ 2)
+  NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+
+
+  Pout3d <- list()
+  Tout3d <- list()
+  LOSS <- array()
+  LOSSVEC <- list()
+  IterVec <- list()
+
+  for (i in 1:NRSTARTS){
+    VarSelectResult <- CDfriedman(Xgenerate, Jk, R, LASSO, GROUPLASSO, MAXITER)
+    Pout3d[[i]] <- VarSelectResult$Pmatrix
+    Tout3d[[i]] <- VarSelectResult$Tmatrix
+    LOSS[i] <- VarSelectResult$Loss
+    LOSSVEC[[i]] <- VarSelectResult$Lossvec
+    IterVec[[i]] <- VarSelectResult$iter
+  }
+  k <- which(LOSS == min(LOSS))
+  if (length(k)>1){
+    pos <- sample(1:length(k), 1)
+    k <- k[pos]
+  }
+  PoutBest[[Nd]] <- Pout3d[[k]]
+  ToutBest[[Nd]] <- Tout3d[[k]]
+
+  TuckerResults <- TuckerCoef(Ttrue, Tout3d[[k]])
+  TuckerValues[Nd] <- TuckerResults$tucker_value
+  PoutBest[[Nd]] <- PoutBest[[Nd]][, TuckerResults$perm]
+
+  indSelectedC <- which(PoutBest[[Nd]] != 0)
+  indDropedC <- which(PoutBest[[Nd]] == 0)
+  Proportion[Nd] <- (sum(PTrueCnew[indSelectedC] != 0) + sum(PTrueCnew[indDropedC] == 0)) / (sumJk*R)
+}
+
+Proportion
+TuckerValues
+```
+The **proportion of correctedly recoverd variables** is  \
+ [1] 0.9545455 0.9419192 0.9343434 0.9469697 0.9671717 0.9292929 0.9419192 0.9419192\
+ [9] 0.9393939 0.9393939 0.9570707 0.9444444 0.9292929 0.9419192 0.9444444 0.9343434\
+[17] 0.9393939 0.9419192 0.9368687 0.9343434 0.9292929 0.9494949 0.9343434 0.9520202\
+[25] 0.9368687 0.9469697 0.9393939 0.9545455 0.9595960 0.9494949 0.9444444 0.9545455\
+[33] 0.9444444 0.9267677 0.9419192 0.9520202 0.9393939 0.9191919 0.9570707 0.9494949\
+[41] 0.9292929 0.9570707 0.9494949 0.9444444 0.9393939 0.9545455 0.9368687 0.9595960\
+[49] 0.9368687 0.9292929\
+The **tucker** congruence is \
+ [1] 0.9993872 0.9987248 0.9994389 0.9992776 0.9992926 0.9990360 0.9989584 0.9994377\
+ [9] 0.9993468 0.9993764 0.9991004 0.9994704 0.9994647 0.9990925 0.9989752 0.9988405\
+[17] 0.9986252 0.9992000 0.9988619 0.9988978 0.9994705 0.9990192 0.9993391 0.9993679\
+[25] 0.9990915 0.9991657 0.9989258 0.9990775 0.9991679 0.9991862 0.9989710 0.9994235\
+[33] 0.9990570 0.9993450 0.9994280 0.9989113 0.9990690 0.9994643 0.9995534 0.9989718\
+[41] 0.9990030 0.9992335 0.9992256 0.9991829 0.9985411 0.9989132 0.9990871 0.9990585\
+[49] 0.9990770 0.9992915
+
+The simulation results have been saved to SimCDfriedman00002.RData. In general, the algorithm works well in this setting. 
+
+# Simulations for CDpre.R
+
+## situation 1 on *windows PC* (index nr. SimCDpre00001)
+(Also tested on *apple macbook pro*. The results are idential.)
+
+2 blocks, 5 components\
+1 0 0 1 1\
+1 1 1 0 0\
+Note that the first component is common component but very sparse.
+```{r, eval=FALSE}
+set.seed(112)
+
+I <- 28
+J1 <- 144
+J2 <-44
+Jk <- c(J1, J2)
+sumJk <- sum(J1 + J2)
+R <- 5
+Comm <- 1
+
+PropNoise <- 0.05
+Perc0Com <- 0.9  # this is for generating sparseness for testing CDpre.R
+
+NRSTARTS <- 20
+Ndataset <- 50
+MAXITER <- 400
+
+LASSO <- 0.45
+Tucker <- array()
+Proportion <- array()
+ProportionCom <- array()
+PoutBest <- list()
+ToutBest <- list()
+TuckerValues <- array()
+PoutBestPermu <- list()
+
+for (Nd in 1:Ndataset){
+  DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+  DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+  DATA <- cbind(DATA1, DATA2)
+
+  svddata <- svd(DATA, R, R)
+  Ttrue <- svddata$u
+  PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen   values are needed.
+
+  PTrueCBlock1 <- PTrueC[1:J1,]
+  PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+
+  v1 <- c(2, 3)
+  PTrueCBlock1[, v1] <- 0
+  v2 <- c(4, 5)
+  PTrueCBlock2[, v2] <- 0
+  dist <- c(v1, v2)
+
+  PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2)
+  Pcommon <- PTrueCnew[, Comm]
+  lengthPtrue <- length(Pcommon)
+  v <- sample(1:lengthPtrue, size = round(Perc0Com*(J1+J2)), replace=F)
+  Pcommon[v] <- 0
+  PTrueCnew[ , Comm] <- Pcommon
+
+  XTrue <- Ttrue %*% t(PTrueCnew)
+  SSXtrue <- sum(XTrue ^ 2)
+
+  Noise <- matrix(rnorm(I*(J1+J2), mean = 0, sd = 1), I, J1+J2)
+  SSNoise <- sum(Noise ^ 2)
+  g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+  NoiseNew <- g*Noise
+  SSNoiseNew <- sum(NoiseNew ^ 2)
+  Xgenerate <- XTrue + NoiseNew
+  SSXgenerate <- sum(Xgenerate ^ 2)
+  NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+
+  #----
+  target <- matrix(c(1,1,0,1,0,1,1,0,1,0), 2, 5)
+  #      [,1] [,2] [,3] [,4] [,5]
+  #[1,]    1    0    0    1    1
+  #[2,]    1    1    1    0    0
+
+  comStr <- component_structure(Jk, R, target)
+
+  Pout3d <- list()
+  Tout3d <- list()
+  LOSS <- array()
+  LOSSVEC <- list()
+  IterVec <- list()
+  for (i in 1:NRSTARTS){
+    VarSelectResult <- CDpre(Xgenerate, Jk, R, Comm, GroupStructure=comStr, LASSO, MAXITER)
+    Pout3d[[i]] <- VarSelectResult$Pmatrix
+    Tout3d[[i]] <- VarSelectResult$Tmatrix
+    LOSS[i] <- VarSelectResult$Loss
+    LOSSVEC[[i]] <- VarSelectResult$Lossvec
+    IterVec[[i]] <- VarSelectResult$iter
+  }
+  k <- which(LOSS == min(LOSS))
+  if (length(k)>1){
+    pos <- sample(1:length(k), 1)
+    k <- k[pos]
+  }
+  PoutBest[[Nd]] <- Pout3d[[k]]
+  ToutBest[[Nd]] <- Tout3d[[k]]
+
+  TuckerResults <- TuckerCoef(Ttrue, Tout3d[[k]])
+  TuckerValues[Nd] <- TuckerResults$tucker_value
+  PoutBest[[Nd]] <- PoutBest[[Nd]][, TuckerResults$perm]
+
+  indSelectedC <- which(PoutBest[[Nd]] != 0)
+  indDropedC <- which(PoutBest[[Nd]] == 0)
+  Proportion[Nd] <- (sum(PTrueCnew[indSelectedC] != 0) + sum(PTrueCnew[indDropedC] == 0)) / (sumJk*R)
+  ProportionCom[Nd] <- (Proportion[Nd]*(sumJk*R)- (R-1)*sumJk)/sumJk  #there is only 1 common component
+}
+
+ProportionCom
+TuckerValues
+```
+The **proportion of variables in the common component correctly recoverd** is \
+ [1] 0.9893617 0.9946809 0.9734043 0.9680851 0.9787234 0.9734043 0.9627660 0.9893617 0.9787234\
+[10] 0.9734043 0.9734043 0.9946809 0.9680851 0.9946809 0.9680851 1.0000000 0.9893617 0.9734043\
+[19] 0.9893617 0.9946809 0.9893617 0.9734043 0.9893617 0.9893617 0.9946809 0.9840426 0.9840426\
+[28] 1.0000000 0.9734043 0.9734043 0.9893617 0.9946809 0.9734043 0.9787234 0.9734043 0.9893617\
+[37] 0.9946809 0.9734043 1.0000000 0.9840426 0.9787234 0.9840426 0.9734043 0.9893617 0.9946809\
+[46] 0.9840426 1.0000000 0.9787234 0.9893617 0.9734043\
+The **tucker** coeffients are \
+ [1] 0.9825666 0.8815858 0.9404395 0.9801816 0.8416032 0.8845719 0.9710232 0.9078792 0.8468344\
+[10] 0.9004182 0.8535270 0.8613257 0.8764986 0.9633988 0.8775611 0.8651680 0.8311619 0.9823618\
+[19] 0.9800763 0.9590369 0.9177360 0.9810800 0.9495088 0.8482882 0.9416688 0.8838591 0.9443626\
+[28] 0.9672518 0.9113416 0.9012444 0.8575766 0.8861581 0.8341322 0.9556060 0.8562612 0.8950225\
+[37] 0.9523830 0.9231964 0.9497683 0.9527709 0.9205981 0.8988661 0.8339811 0.8943917 0.9163891\
+[46] 0.9121442 0.7664409 0.9907400 0.9926229 0.9585495\
+In general, when the Lasso tuning parameter is properly chosen, this algorithm works well. The simulation results have been saved to SimCDpre00001.RData.
+
+## situation 2 on *windows PC* (index nr. SimCDpre00002)
+(Also tested on *apple macbook pro*. The results are idential.)
+
+3 blocks, 4 components\
+1 1 0 1 \
+1 1 1 0 \
+1 1 1 0 \
+Note that the first 2 components are common components but very sparse.
+```{r, eval=FALSE}
+set.seed(112)
+
+I <- 28
+J1 <- 44
+J2 <- 44
+J3 <- 24
+Jk <- c(J1, J2, J3)
+sumJk <- sum(J1 + J2 + J3)
+R <- 4
+Comm <- c(1,2)
+
+PropNoise <- 0.05
+Perc0Com <- 0.5  # this is for generating sparseness for testing CDpre.R
+
+NRSTARTS <- 20
+Ndataset <- 50
+MAXITER <- 500
+
+LASSO <- 0.31
+Tucker <- array()
+Proportion <- array()
+ProportionCom <- array()
+PoutBest <- list()
+ToutBest <- list()
+TuckerValues <- array()
+PoutBestPermu <- list()
+
+for (Nd in 1:Ndataset){
+  DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+  DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+  DATA3 <- matrix(rnorm(I*J3, mean = 0, sd = 1), I, J3)
+  DATA <- cbind(DATA1, DATA2, DATA3)
+
+  svddata <- svd(DATA, R, R)
+  Ttrue <- svddata$u
+  PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen   values are needed.
+
+  PTrueCBlock1 <- PTrueC[1:J1,]
+  PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+  PTrueCBlock3 <- PTrueC[(J1+J2+1):(J1+J2+J3),]
+
+  PTrueCBlock1[, 3] <- 0
+  PTrueCBlock2[, 4] <- 0
+  PTrueCBlock3[, 4] <- 0
+
+  PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2,PTrueCBlock3)
+  v <- sample(1:nrow(PTrueCnew), size = round(Perc0Com*nrow(PTrueCnew)), replace=F)
+  PTrueCnew[v, 1] <- 0
+  v <- sample(1:nrow(PTrueCnew), size = round(Perc0Com*nrow(PTrueCnew)), replace=F)
+  PTrueCnew[v, 2] <- 0
+
+  XTrue <- Ttrue %*% t(PTrueCnew)
+  SSXtrue <- sum(XTrue ^ 2)
+
+  Noise <- matrix(rnorm(I*(J1+J2+J3), mean = 0, sd = 1), I, J1+J2+J3)
+  SSNoise <- sum(Noise ^ 2)
+  g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+  NoiseNew <- g*Noise
+  SSNoiseNew <- sum(NoiseNew ^ 2)
+  Xgenerate <- XTrue + NoiseNew
+  SSXgenerate <- sum(Xgenerate ^ 2)
+  NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+
+  #----
+  target <- matrix(c(1,1,1,1,1,1,0,1,1,1,0,0), 3, 4)
+#     [,1] [,2] [,3] [,4]
+#[1,]    1    1    0    1
+#[2,]    1    1    1    0
+#[3,]    1    1    1    0
+
+  comStr <- component_structure(Jk, R, target)
+
+  Pout3d <- list()
+  Tout3d <- list()
+  LOSS <- array()
+  LOSSVEC <- list()
+  IterVec <- list()
+  for (i in 1:NRSTARTS){
+    VarSelectResult <- CDpre(Xgenerate, Jk, R, Comm, GroupStructure=comStr, LASSO, MAXITER)
+    Pout3d[[i]] <- VarSelectResult$Pmatrix
+    Tout3d[[i]] <- VarSelectResult$Tmatrix
+    LOSS[i] <- VarSelectResult$Loss
+    LOSSVEC[[i]] <- VarSelectResult$Lossvec
+    IterVec[[i]] <- VarSelectResult$iter
+  }
+  k <- which(LOSS == min(LOSS))
+  if (length(k)>1){
+    pos <- sample(1:length(k), 1)
+    k <- k[pos]
+  }
+  PoutBest[[Nd]] <- Pout3d[[k]]
+  ToutBest[[Nd]] <- Tout3d[[k]]
+
+  TuckerResults <- TuckerCoef(Ttrue, Tout3d[[k]])
+  TuckerValues[Nd] <- TuckerResults$tucker_value
+  PoutBest[[Nd]] <- PoutBest[[Nd]][, TuckerResults$perm]
+
+  indSelectedC <- which(PoutBest[[Nd]] != 0)
+  indDropedC <- which(PoutBest[[Nd]] == 0)
+  Proportion[Nd] <- (sum(PTrueCnew[indSelectedC] != 0) + sum(PTrueCnew[indDropedC] == 0)) / (sumJk*R)
+  ProportionCom[Nd] <- (Proportion[Nd]*(sumJk*R)- (R-2)*sumJk)/(sumJk*2)  #there are 2 common components
+}
+ProportionCom
+TuckerValues
+```
+The **proportion of variable correctly recovered** in the common components\
+[1] 0.9151786 0.9419643 0.9196429 0.9196429 0.9419643 0.9375000 0.9107143 0.9196429 0.9241071\
+[10] 0.9330357 0.9151786 0.9375000 0.9151786 0.9241071 0.9151786 0.9330357 0.9107143 0.9241071\
+[19] 0.9107143 0.9107143 0.9241071 0.9241071 0.8928571 0.9330357 0.9107143 0.9419643 0.9330357\
+[28] 0.9330357 0.9642857 0.9151786 0.9598214 0.9464286 0.9017857 0.9196429 0.9151786 0.8973214\
+[37] 0.9196429 0.9330357 0.9196429 0.9062500 0.9107143 0.9151786 0.9017857 0.8973214 0.8928571\
+[46] 0.9196429 0.9151786 0.9107143 0.9419643 0.9151786\
+
+**Tucker** coefficients \
+ [1] 0.9989807 0.9987515 0.9988563 0.9990349 0.9987174 0.9988303 0.9986082 0.9987106 0.9990880\
+[10] 0.9987837 0.9991487 0.9987964 0.9990025 0.9987933 0.9987089 0.9988694 0.9984281 0.9990619\
+[19] 0.9991179 0.9990535 0.9985343 0.9989674 0.9992890 0.9984448 0.9993073 0.9983826 0.9991661\
+[28] 0.9989630 0.9988543 0.9985910 0.9984941 0.9989733 0.9990357 0.9988831 0.9986721 0.9990117\
+[37] 0.9991768 0.9989395 0.9992126 0.9987226 0.9990248 0.9989791 0.9989427 0.9983713 0.9987557\
+[46] 0.9990805 0.9989800 0.9988804 0.9990152 0.9993032\
+
+(Note that it is difficult to find the proper tuning parameter in this case. Cross-validation should be very useful here. Maximum number of iterations is set to be 500.) \
+
+Simulation results have been saved to  SimCDpre00002.RData.
+
+# Simulations for cv_friedman.R
+## situation 1 on *windows PC* (index Nr. SimCV_friedman00001)
+(Also tested on *apple macbook pro*. The results are idential.)
+
+2 blocks, 5 components:\
+0 0 0 1 1\
+1 1 1 0 0\
+Furthermore, the distinctive components are sparse.
+(note: sparse distinctive component here means some of the loadings in the distictive component are 0's. See the code below.)
+```{r, eval=FALSE}
+set.seed(112)
+
+I <- 28
+J1 <- 144
+J2 <-44
+Jk <- c(J1, J2)
+sumJk <- sum(J1 + J2)
+R <- 5
+
+
+PropNoise <- 0.05
+Perc0 <- 0.3
+
+NRSTARTS <- 20
+Ndataset <- 50
+MAXITER <- 400
+
+
+Tucker <- array()
+ProportionComm <- array()
+ProportionDist <- array()
+Proportion <- array()
+
+PoutBest <- list()
+ToutBest <- list()
+TuckerValues <- array()
+PoutBestPermu <- list()
+
+DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+DATA <- cbind(DATA1, DATA2)
+
+svddata <- svd(DATA, R, R)
+Ttrue <- svddata$u
+PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen values are needed.
+
+PTrueCBlock1 <- PTrueC[1:J1,]
+PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+
+v1 <- c(1, 2, 3)
+PTrueCBlock1[, v1] <- 0
+v2 <- c(4, 5)
+PTrueCBlock2[, v2] <- 0
+
+
+
+PTrueCBlock1_vec <- as.vector(PTrueCBlock1[, v2])
+v <- sample(1:(J1*2), size = round(Perc0*(J1*2)), replace=F)
+PTrueCBlock1_vec[v] <- 0
+PTrueCBlock1[, v2] <- matrix(PTrueCBlock1_vec, nrow = J1, ncol = 2)
+
+PTrueCBlock2_vec <- as.vector(PTrueCBlock2[, v1])
+v <- sample(1:(J2*3), size = round(Perc0*(J2*3)), replace=F)
+PTrueCBlock2_vec[v] <- 0
+PTrueCBlock2[, v1] <- matrix(PTrueCBlock2_vec, nrow = J2, ncol = 3)
+
+PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2)
+
+XTrue <- Ttrue %*% t(PTrueCnew)
+SSXtrue <- sum(XTrue ^ 2)
+
+Noise <- matrix(rnorm(I*(J1+J2), mean = 0, sd = 1), I, J1+J2)
+SSNoise <- sum(Noise ^ 2)
+g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+NoiseNew <- g*Noise
+SSNoiseNew <- sum(NoiseNew ^ 2)
+Xgenerate <- XTrue + NoiseNew
+SSXgenerate <- sum(Xgenerate ^ 2)
+NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+
+cros_results <- cv_CDfriedman(Xgenerate, Jk, R)
+```
+The plots (see SimCV_friedman00001_NEWpic1.png and also the old pics SimCV_friedman00001_pic1.pdf and SimCV_friedman00001_pic2.pdf) suggest that  cross-validation ~~sees to favor Lasso=0 and Group Lasso=0. It is known that cross-validation favors overfitting~~. 
+
+[comment: Feb. 19, 2017 on Mac: Note that the new pic has a 1SE dotted line. If we follow the 1SE rule, then we may want to choose Lasso [.060445650, 0.492128221] and Group Lasso [0.000911882, 0.022009227].]
+
+In the following example, we focus on a smaller region of Lasso and Group Lasso.   
+
+```{r, eval=FALSE}
+cros_results <- cv_CDfriedman(Xgenerate, Jk, R, LassoSequence = seq(0.001, .24, length.out = 5), GLassoSequence = seq(0.01625, 0.04875, length.out = 5))
+```
+The plots (see SimCV_friedman00001_NEWpic2.png, and also old pics SimCV_friedman00001_pic3.png and SimCV_friedman00001_pic4.png) suggest that Lasso tuning parameters might be somewhere between .06075 and .18025. 
+
+```{r, eval=FALSE}
+cros_results <- cv_CDfriedman(Xgenerate, Jk, R, LassoSequence = seq(.06, .2, length.out = 5), GLassoSequence = seq(0.03, 0.04, length.out = 3))
+```
+The plots (see SimCV_friedman00001_NEWpic3.png and also old pics SimCV_friedman00001_pic5.png and SimCV_friedman00001_pic6.png) suggest that Lasso tuning parameters might be somewhere between .13 and .165. Group Lasso can be .04. However, these values might be too conservative, see SimCDfriedman00001. (This is to be a future research. It seems that Cross-validation in this case gives conservative results, meaning that more variables in P are selected than needed. )
+
+# Simulations for cv_CDpreKf.R
+## situation 1 on *windows PC* (index Nr. SimCV_CDpreKf00001)
+(Also tested on *apple macbook pro*. The plots are similar, note that this is because the newer version used ggplot2 and log scale. )
+
+
+1 0 0 1 1\
+1 1 1 0 0\
+Note that the first component is common component but very sparse.\
+
+```{r, eval=FALSE}
+set.seed(112)
+
+I <- 28
+J1 <- 144
+J2 <-44
+Jk <- c(J1, J2)
+sumJk <- sum(J1 + J2)
+R <- 5
+Comm <- 1
+
+PropNoise <- 0.05
+Perc0Com <- 0.9  # this is for generating sparseness for testing CDpre.R
+
+NRSTARTS <- 20
+Ndataset <- 50
+MAXITER <- 400
+
+LASSO <- 0.3
+
+DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+DATA <- cbind(DATA1, DATA2)
+
+svddata <- svd(DATA, R, R)
+Ttrue <- svddata$u
+PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen values are needed.
+
+PTrueCBlock1 <- PTrueC[1:J1,]
+PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+
+v1 <- c(2, 3)
+PTrueCBlock1[, v1] <- 0
+v2 <- c(4, 5)
+PTrueCBlock2[, v2] <- 0
+dist <- c(v1, v2)
+
+PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2)
+Pcommon <- PTrueCnew[, Comm]
+lengthPtrue <- length(Pcommon)
+v <- sample(1:lengthPtrue, size = round(Perc0Com*(J1+J2)), replace=F)
+Pcommon[v] <- 0
+PTrueCnew[ , Comm] <- Pcommon
+
+XTrue <- Ttrue %*% t(PTrueCnew)
+SSXtrue <- sum(XTrue ^ 2)
+
+Noise <- matrix(rnorm(I*(J1+J2), mean = 0, sd = 1), I, J1+J2)
+SSNoise <- sum(Noise ^ 2)
+g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+NoiseNew <- g*Noise
+SSNoiseNew <- sum(NoiseNew ^ 2)
+Xgenerate <- XTrue + NoiseNew
+SSXgenerate <- sum(Xgenerate ^ 2)
+NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+
+#----
+target <- matrix(c(1,1,0,1,0,1,1,0,1,0), 2, 5)
+#      [,1] [,2] [,3] [,4] [,5]
+#[1,]    1    0    0    1    1
+#[2,]    1    1    1    0    0
+
+comStr <- component_structure(Jk, R, target)
+
+cros_results <- cv_CDpreKf(Xgenerate, Jk, R, CommPosition=Comm, component_structure=comStr, MaxIter=MAXITER, NRSTARTS=NRSTARTS)
+```
+The results (see plot SimCV_CDpreKf00001_NEWpic1.png ~~SimCV_CDpreKf00001pic1.png and SimCV_CDpreKf00001pic2.png~~) suggest that Lasso tuning parameter can be between .3 and 1.05.  [comment, 19 Feb, 2017. Note that old plots are different from the new one, because the new one is on the log scale. Based on the new plot, we would choose a few region between .5 and 1.3]
+
+```{r, eval=FALSE}
+cros_results <- cv_CDpreKf(Xgenerate, Jk, R, CommPosition=Comm, component_structure=comStr, MaxIter=MAXITER, NRSTARTS=20, LassoSequence = seq(from=.3, to=1.05, length.out = 5))
+```
+The results are saved to SimCV_CDpreKf00001_NEWpic2.png (old pics: SimCV_CDpreKf00001pic3.png and SimCV_CDpreKf00001pic4.png). Interestingly, we the 1SE rule may lead to results that are too sparse in this case. See below. 
+
+```{r, eval=FALSE}
+Pout3d <- list()
+Tout3d <- list()
+LOSS <- array()
+LOSSVEC <- list()
+IterVec <- list()
+for (i in 1:NRSTARTS){
+  VarSelectResult <- CDpre(Xgenerate, Jk, R, Comm, GroupStructure=comStr, LASSO=1.05, MAXITER)
+  Pout3d[[i]] <- VarSelectResult$Pmatrix
+  Tout3d[[i]] <- VarSelectResult$Tmatrix
+  LOSS[i] <- VarSelectResult$Loss
+  LOSSVEC[[i]] <- VarSelectResult$Lossvec
+  IterVec[[i]] <- VarSelectResult$iter
+}
+k <- which(LOSS == min(LOSS))
+if (length(k)>1){
+  pos <- sample(1:length(k), 1)
+  k <- k[pos]
+}
+PoutBest <- Pout3d[[k]]
+ToutBest <- Tout3d[[k]]
+
+table(PoutBest[,1]!=0, PTrueCnew[,1]!=0)
+  
+indSelectedC <- which(PoutBest[, 1] != 0)
+indDropedC <- which(PoutBest[, 1] == 0)
+Proportion <- (sum(PTrueCnew[,1][indSelectedC] != 0) + sum(PTrueCnew[,1][indDropedC] == 0)) / sumJk
+
+```
+97.34% of the variables (both zeros and non zeros) are correctly identified. 
+
+NEW: Feb 19, 2017, plot saved to 
+```{r, eval=FALSE}
+cros_results <- cv_CDpreKf(Xgenerate, Jk, R, CommPosition=Comm, component_structure=comStr, MaxIter=MAXITER, NRSTARTS=20, LassoSequence = seq(from=.4, to=1.5, length.out = 50))
+```
+
+## situation 2 on *windows PC* (index Nr. SimCV_CDpreKf00002)
+(Also tested on *apple macbook pro*. The plots are similar, note that this is because the newer version used ggplot2 and log scale. The rest (e.g., proportion of variables recovered) are identical.)
+
+3 blocks, 4 components\
+1 1 0 1 \
+1 1 1 0 \
+1 1 1 0 \
+Note that the first 2 components are common components but very sparse.
+```{r, eval=FALSE}
+set.seed(112)
+
+I <- 28
+J1 <- 44
+J2 <- 44
+J3 <- 24
+Jk <- c(J1, J2, J3)
+sumJk <- sum(J1 + J2 + J3)
+R <- 4
+Comm <- c(1,2)
+
+PropNoise <- 0.05
+Perc0Com <- 0.5  # this is for generating sparseness for testing CDpre.R
+
+NRSTARTS <- 20
+Ndataset <- 50
+MAXITER <- 500
+
+
+DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+  DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+  DATA3 <- matrix(rnorm(I*J3, mean = 0, sd = 1), I, J3)
+  DATA <- cbind(DATA1, DATA2, DATA3)
+
+  svddata <- svd(DATA, R, R)
+  Ttrue <- svddata$u
+  PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen   values are needed.
+
+  PTrueCBlock1 <- PTrueC[1:J1,]
+  PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+  PTrueCBlock3 <- PTrueC[(J1+J2+1):(J1+J2+J3),]
+
+  PTrueCBlock1[, 3] <- 0
+  PTrueCBlock2[, 4] <- 0
+  PTrueCBlock3[, 4] <- 0
+
+  PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2,PTrueCBlock3)
+  v <- sample(1:nrow(PTrueCnew), size = round(Perc0Com*nrow(PTrueCnew)), replace=F)
+  PTrueCnew[v, 1] <- 0
+  v <- sample(1:nrow(PTrueCnew), size = round(Perc0Com*nrow(PTrueCnew)), replace=F)
+  PTrueCnew[v, 2] <- 0
+
+  XTrue <- Ttrue %*% t(PTrueCnew)
+  SSXtrue <- sum(XTrue ^ 2)
+
+  Noise <- matrix(rnorm(I*(J1+J2+J3), mean = 0, sd = 1), I, J1+J2+J3)
+  SSNoise <- sum(Noise ^ 2)
+  g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+  NoiseNew <- g*Noise
+  SSNoiseNew <- sum(NoiseNew ^ 2)
+  Xgenerate <- XTrue + NoiseNew
+  SSXgenerate <- sum(Xgenerate ^ 2)
+  NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+
+  #----
+  target <- matrix(c(1,1,1,1,1,1,0,1,1,1,0,0), 3, 4)
+#     [,1] [,2] [,3] [,4]
+#[1,]    1    1    0    1
+#[2,]    1    1    1    0
+#[3,]    1    1    1    0
+
+  comStr <- component_structure(Jk, R, target)
+
+cros_results <- cv_CDpreKf(Xgenerate, Jk, R, CommPosition=Comm, component_structure=comStr, MaxIter=MAXITER, NRSTARTS=NRSTARTS)  
+    
+```
+Results suggest that Lasso tuning parameter could be chose at between 0 and 0.9. (see SimCV_CDpreKf00002pic1.png and SimCV_CDpreKf00002pic2.png). [New results: on the log scale: SimCV_CDpreKf00002_NEWpic1.png. We need to choose Lasso between 0.098358628 and 0.639678854. Here is a case where log scale is better]
+
+```{r, eval=FALSE}
+cros_results <- cv_CDpreKf(Xgenerate, Jk, R, CommPosition=Comm, component_structure=comStr, MaxIter=MAXITER, NRSTARTS=NRSTARTS, LassoSequence = seq(from=0, to=.9, length.out = 10)) 
+```
+Results suggest that Lasso tuning parameter could be somewhere around .2 (see SimCV_CDpreKf00002pic3.png and SimCV_CDpreKf00002pic4. png). [note that the new plot would suggest the same see SimCV_CDpreKf00002_NEWpic2.png; note that happens when Lasso=0 on the new plot. We will improve the plot further.] Thus, we let Lasso=0.2:
+
+```{r, eval=FALSE}
+results <- CDpre(Xgenerate, Jk, R, CommPosition = Comm, GroupStructure = comStr, LASSO = .2, MaxIter = MAXITER)
+  
+indSelectedC <- which(results$Pmatrix[,c(1,2)] != 0)
+indDropedC <- which(results$Pmatrix[,c(1,2)] == 0)
+Proportion <- (sum(PTrueCnew[, c(1,2)][indSelectedC] != 0) + sum(PTrueCnew[, c(1,2)][indDropedC] == 0)) / (sumJk*2)  #there are 2 common components
+```
+The proportion is 50%. LASSO=.2 is **too conservative**. [comment Feb 19, 2017: On the other hand, if we check the new plot SimCV_CDpreKf00002_NEWpic3.png, it seems that Lasso should be between .2 and .3. ]
+```{r, eval=FALSE}
+results <- CDpre(Xgenerate, Jk, R, CommPosition = Comm, GroupStructure = comStr, LASSO = .3, MaxIter = MAXITER)
+  
+indSelectedC <- which(results$Pmatrix[,c(1,2)] != 0)
+indDropedC <- which(results$Pmatrix[,c(1,2)] == 0)
+Proportion <- (sum(PTrueCnew[, c(1,2)][indSelectedC] != 0) + sum(PTrueCnew[, c(1,2)][indDropedC] == 0)) / (sumJk*2)  #there are 2 common components
+```
+When Lasso=0.3, the proportion of variables in the common components (both zeros and non-zeros) correctly identified is 91.96%. 
+
+# Special cases in cv_CDfriedman.R 
+## Situation 1: A sequence of values for Lasso, No Group Lasso (index Nr. SP_cv_CDfriedman0000001.R)
+(also checked on *macbook pro*)
+
+This means that we have a crossvalidation for Lasso tuning parameters only. 
+
+2 blocks, 5 components, and let Group Lasso = 0:\
+0 0 0 1 1\
+1 1 1 0 0\
+Furthermore, the distinctive components are sparse.
+(note: sparse distinctive component here means some of the loadings in the distictive component are 0's. See the code below.)
+```{r, eval=FALSE}
+set.seed(112)
+
+I <- 28
+J1 <- 144
+J2 <-44
+Jk <- c(J1, J2)
+sumJk <- sum(J1 + J2)
+R <- 5
+
+
+PropNoise <- 0.05
+Perc0 <- 0.3
+
+NRSTARTS <- 20
+Ndataset <- 50
+MAXITER <- 400
+
+
+Tucker <- array()
+ProportionComm <- array()
+ProportionDist <- array()
+Proportion <- array()
+
+PoutBest <- list()
+ToutBest <- list()
+TuckerValues <- array()
+PoutBestPermu <- list()
+
+DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+DATA <- cbind(DATA1, DATA2)
+
+svddata <- svd(DATA, R, R)
+Ttrue <- svddata$u
+PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen values are needed.
+
+PTrueCBlock1 <- PTrueC[1:J1,]
+PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+
+v1 <- c(1, 2, 3)
+PTrueCBlock1[, v1] <- 0
+v2 <- c(4, 5)
+PTrueCBlock2[, v2] <- 0
+
+
+
+PTrueCBlock1_vec <- as.vector(PTrueCBlock1[, v2])
+v <- sample(1:(J1*2), size = round(Perc0*(J1*2)), replace=F)
+PTrueCBlock1_vec[v] <- 0
+PTrueCBlock1[, v2] <- matrix(PTrueCBlock1_vec, nrow = J1, ncol = 2)
+
+PTrueCBlock2_vec <- as.vector(PTrueCBlock2[, v1])
+v <- sample(1:(J2*3), size = round(Perc0*(J2*3)), replace=F)
+PTrueCBlock2_vec[v] <- 0
+PTrueCBlock2[, v1] <- matrix(PTrueCBlock2_vec, nrow = J2, ncol = 3)
+
+PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2)
+
+XTrue <- Ttrue %*% t(PTrueCnew)
+SSXtrue <- sum(XTrue ^ 2)
+
+Noise <- matrix(rnorm(I*(J1+J2), mean = 0, sd = 1), I, J1+J2)
+SSNoise <- sum(Noise ^ 2)
+g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+NoiseNew <- g*Noise
+SSNoiseNew <- sum(NoiseNew ^ 2)
+Xgenerate <- XTrue + NoiseNew
+SSXgenerate <- sum(Xgenerate ^ 2)
+NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+
+cros_results <- cv_CDfriedman(Xgenerate, Jk, R, GLassoSequence = 0, LassoSequence = seq(0, 0.2, length.out = 20))
+```
+The results suggest that we may find a proper Lasso tuning parameter between 0.15 and .2 (see SP_cv_CDfriedman0000001pic1.png, and SP_cv_CDfriedman0000001pic2.png). The new plot SP_cv_CDfriedman0000001_NEWpic1.png would suggest between .13 and .16. 
+
+Thus, the next step is to give LassoSequence a smaller region (between 0 and 1). We will skip here. 
+
+
+## Situation 2: A sequence of values for Group Lasso, No Lasso (index Nr. SP_cv_CDfriedman0000002.R)
+This means that we have a crossvalidation for Lasso tuning parameters only. 
+
+2 blocks, 5 components, and let  Lasso = .5:\
+0 0 0 1 1\
+1 1 1 0 0\
+Furthermore, the distinctive components are sparse.
+(note: sparse distinctive component here means some of the loadings in the distictive component are 0's. See the code below.)
+```{r, eval=FALSE}
+set.seed(112)
+
+I <- 28
+J1 <- 144
+J2 <-44
+Jk <- c(J1, J2)
+sumJk <- sum(J1 + J2)
+R <- 5
+
+
+PropNoise <- 0.05
+Perc0 <- 0.3
+
+NRSTARTS <- 20
+Ndataset <- 50
+MAXITER <- 400
+
+
+Tucker <- array()
+ProportionComm <- array()
+ProportionDist <- array()
+Proportion <- array()
+
+PoutBest <- list()
+ToutBest <- list()
+TuckerValues <- array()
+PoutBestPermu <- list()
+
+DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+DATA <- cbind(DATA1, DATA2)
+
+svddata <- svd(DATA, R, R)
+Ttrue <- svddata$u
+PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen values are needed.
+
+PTrueCBlock1 <- PTrueC[1:J1,]
+PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+
+v1 <- c(1, 2, 3)
+PTrueCBlock1[, v1] <- 0
+v2 <- c(4, 5)
+PTrueCBlock2[, v2] <- 0
+
+
+
+PTrueCBlock1_vec <- as.vector(PTrueCBlock1[, v2])
+v <- sample(1:(J1*2), size = round(Perc0*(J1*2)), replace=F)
+PTrueCBlock1_vec[v] <- 0
+PTrueCBlock1[, v2] <- matrix(PTrueCBlock1_vec, nrow = J1, ncol = 2)
+
+PTrueCBlock2_vec <- as.vector(PTrueCBlock2[, v1])
+v <- sample(1:(J2*3), size = round(Perc0*(J2*3)), replace=F)
+PTrueCBlock2_vec[v] <- 0
+PTrueCBlock2[, v1] <- matrix(PTrueCBlock2_vec, nrow = J2, ncol = 3)
+
+PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2)
+
+XTrue <- Ttrue %*% t(PTrueCnew)
+SSXtrue <- sum(XTrue ^ 2)
+
+Noise <- matrix(rnorm(I*(J1+J2), mean = 0, sd = 1), I, J1+J2)
+SSNoise <- sum(Noise ^ 2)
+g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+NoiseNew <- g*Noise
+SSNoiseNew <- sum(NoiseNew ^ 2)
+Xgenerate <- XTrue + NoiseNew
+SSXgenerate <- sum(Xgenerate ^ 2)
+NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+
+cros_results <- cv_CDfriedman(Xgenerate, Jk, R, LassoSequence = 0, GLassoSequence = seq(.01, .2, length.out = 10))
+```
+The results suggest that we may find a proper value for Group Lasso between .1156 and .15. (see SP_cv_CDfriedman0000002pic1.png, and SP_cv_CDfriedman0000002pic2.png. Note that .1156 is the 6th value in GLassoSequence.)  [comment: Feb 19, 2017, the plot is a bit weird. also see SP_cv_CDfriedman0000002_NEWpic1.png]
+
+```{r, eval=FALSE}
+cros_results <- cv_CDfriedman(Xgenerate, Jk, R, LassoSequence = 0, GLassoSequence = seq(.01, 4, length.out = 30))
+
+CDfriedman(Xgenerate, Jk, R, LASSO=0, GROUPLASSO = .31)
+
+```
+
+

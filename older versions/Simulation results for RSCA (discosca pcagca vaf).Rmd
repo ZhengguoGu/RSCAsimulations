@@ -1,0 +1,395 @@
+---
+title: "simulation results for RSCA (DISCOsca, pca_gca, VAF)"
+author: "Zhengguo Gu"
+date: "1 februari 2017"
+output: html_document
+---
+
+#Install the packages (ingore this once the package is published on CRAN)
+
+First download the package "RSCA_0.1.1.tar.gz" then run the following line\
+*install.packages(pkg="RSCA_0.1.1.tar.gz", repos = NULL)*\
+(It seems that the package needs to be downloaded to C:/Users/.../Documents.) The following function shows which functions are included in the SCA package. We are going to test all the functions. 
+```{r}
+help(package=RSCA)
+```
+
+# situation 1: 1 common component (no sparseness) and 4 distinctive components, 2 blocks
+1 0 0 1 1\
+1 1 1 0 0\
+```{r}
+set.seed(112)
+
+I <- 28
+J1 <- 144
+J2 <-44
+Jk <- c(J1, J2)
+sumJk <- sum(J1 + J2)
+R <- 5
+Comm <- 1
+
+PropNoise <- 0.05
+Perc0Com <- 0.9  
+
+
+DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+DATA <- cbind(DATA1, DATA2)
+
+svddata <- svd(DATA, R, R)
+Ttrue <- svddata$u
+PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen   values are needed.
+
+PTrueCBlock1 <- PTrueC[1:J1,]
+PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+
+v1 <- c(2, 3)
+PTrueCBlock1[, v1] <- 0
+v2 <- c(4, 5)
+PTrueCBlock2[, v2] <- 0
+dist <- c(v1, v2)
+
+PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2)
+
+XTrue <- Ttrue %*% t(PTrueCnew)
+SSXtrue <- sum(XTrue ^ 2)
+
+Noise <- matrix(rnorm(I*(J1+J2), mean = 0, sd = 1), I, J1+J2)
+SSNoise <- sum(Noise ^ 2)
+g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+NoiseNew <- g*Noise
+SSNoiseNew <- sum(NoiseNew ^ 2)
+Xgenerate <- XTrue + NoiseNew
+SSXgenerate <- sum(Xgenerate ^ 2)
+NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+```
+## use VAF to identify number of components
+Given the data, we generally do not know how many components there are, thus, we can try a few numbers, say R=10.
+```{r}
+RSCA::VAF(Xgenerate, Jk, R=10)
+```
+The results suggest that R=5, which is correct.
+
+## use DISCOsca to identify common distictive processes.
+```{r, eval=FALSE}
+results <- RSCA::DISCOsca(Xgenerate, R=5, Jk)
+```
+The results suggest that \
+[1,]    1    1    1    1    1\
+[2,]    0    0    1    0    0\
+Note that DISCOsca relies on a special rule on P. 
+
+## use pca_gca to identify common distictive processes.
+```{r, eval=FALSE}
+results <- RSCA::pca_gca(Xgenerate, Jk)
+```
+The results:
+The number of components in each block are: 3 3\
+There are in total 1 common components in the concatenated data.\
+This means that in total there are 5 compnents, 1 of them is the common component, which is in line with the setup. 
+
+#situation 2, 0 common componnet, 5 distinctive components, 2 blocks
+2 blocks, 5 components: (note that this is with respect to the P matrix)\
+0 0 0 1 1\
+1 1 1 0 0\
+```{r}  
+set.seed(112)
+
+I <- 28
+J1 <- 144
+J2 <-44
+Jk <- c(J1, J2)
+sumJk <- sum(J1 + J2)
+R <- 5
+Comm <- 1 #not used
+
+PropNoise <- 0.05
+Perc0 <- 0.3
+
+NRSTARTS <- 20
+Ndataset <- 50
+MAXITER <- 400
+
+DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+DATA <- cbind(DATA1, DATA2)
+
+svddata <- svd(DATA, R, R)
+Ttrue <- svddata$u
+PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen values are needed.
+
+PTrueCBlock1 <- PTrueC[1:J1,]
+PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+
+v1 <- c(1, 2, 3)
+PTrueCBlock1[, v1] <- 0
+v2 <- c(4, 5)
+PTrueCBlock2[, v2] <- 0
+
+PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2)
+XTrue <- Ttrue %*% t(PTrueCnew)
+SSXtrue <- sum(XTrue ^ 2)
+
+Noise <- matrix(rnorm(I*(J1+J2), mean = 0, sd = 1), I, J1+J2)
+SSNoise <- sum(Noise ^ 2)
+g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+NoiseNew <- g*Noise
+SSNoiseNew <- sum(NoiseNew ^ 2)
+Xgenerate <- XTrue + NoiseNew
+SSXgenerate <- sum(Xgenerate ^ 2)
+NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+```
+
+## use VAF to identify number of components
+Given the data, we generally do not know how many components there are, thus, we can try a few numbers, say R=10.
+```{r}
+RSCA::VAF(Xgenerate, Jk, R=10)
+```
+The results suggest that R=5, which is correct.
+
+## use DISCOsca to identify common distictive processes.
+```{r, eval=FALSE}
+results <- RSCA::DISCOsca(Xgenerate, R=5, Jk)
+```
+The results suggest that\
+[1,]    1    1    1    1    1\
+[2,]    0    1    0    0    0
+
+## use pca_gca to identify common distictive processes.
+```{r, eval=FALSE}
+results <- RSCA::pca_gca(Xgenerate, Jk)
+```
+The number of components in each block are: 2 3\
+There are in total 0 common components in the concatenated data.\
+
+# situation 3, 1 common components, 2 distinctive components, 3 blocks
+3 blocks, 3 components:\
+1 1 0\
+1 0 1\
+1 1 0\
+
+```{r}
+set.seed(112)
+
+I <- 28
+J1 <- 44
+J2 <-44
+J3 <- 44
+Jk <- c(J1, J2, J3)
+sumJk <- sum(J1 + J2 + J3)
+R <- 3
+Comm <- 1
+
+PropNoise <- 0.05
+Perc0 <- 0.3
+
+DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+DATA3 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J3)
+DATA <- cbind(DATA1, DATA2, DATA3)
+
+svddata <- svd(DATA, R, R)
+Ttrue <- svddata$u
+PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen values are needed.
+
+PTrueCBlock1 <- PTrueC[1:J1,]
+PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+PTrueCBlock3 <- PTrueC[(J1+J2+1):(J1+J2+J3),]
+
+# 3 blocks, 3 components:
+# 1 1 0
+# 1 0 1
+# 1 1 0
+PTrueCBlock1[, 3] <- 0
+PTrueCBlock2[, 2] <- 0
+PTrueCBlock3[, 3] <- 0
+PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2, PTrueCBlock3)
+
+XTrue <- Ttrue %*% t(PTrueCnew)
+SSXtrue <- sum(XTrue ^ 2)
+
+Noise <- matrix(rnorm(I*(J1+J2+J3), mean = 0, sd = 1), I, J1+J2+J3)
+SSNoise <- sum(Noise ^ 2)
+g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+NoiseNew <- g*Noise
+SSNoiseNew <- sum(NoiseNew ^ 2)
+Xgenerate <- XTrue + NoiseNew
+SSXgenerate <- sum(Xgenerate ^ 2)
+NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+```
+## use VAF to identify number of components
+Given the data, we generally do not know how many components there are, thus, we can try a few numbers, say R=10.
+```{r}
+RSCA::VAF(Xgenerate, Jk, R=10)
+```
+The results suggest that R=3, which is correct.
+
+## use DISCOsca to identify common distictive processes.
+```{r, eval=FALSE}
+results <- RSCA::DISCOsca(Xgenerate, R=3, Jk)
+```
+The results suggest \
+[1,]    1    1    1 \
+[2,]    1    0    1 \
+[3,]    0    1    0 
+
+## use pca_gca to identify common distictive processes.
+```{r, eval=FALSE}
+results <- RSCA::pca_gca(Xgenerate, Jk)
+```
+The results are as follows
+The number of components in each block are: 2 2 2
+There are in total 0 common components in the concatenated data. 
+The results are NOT in line  with the setup. 
+
+
+# situation 4, 1 common components, 4 distinctive components, 3 blocks
+3 blocks, 5 components:\
+1 1 0 0 1\
+1 0 1 1 0\
+1 1 0 1 1\
+
+```{r}
+set.seed(112)
+
+I <- 28
+J1 <- 44
+J2 <-44
+J3 <- 44
+Jk <- c(J1, J2, J3)
+sumJk <- sum(J1 + J2 + J3)
+R <- 5
+Comm <- 1
+
+PropNoise <- 0.05
+Perc0 <- 0.3
+
+DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+DATA3 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J3)
+DATA <- cbind(DATA1, DATA2, DATA3)
+
+svddata <- svd(DATA, R, R)
+Ttrue <- svddata$u
+PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen values are needed.
+
+PTrueCBlock1 <- PTrueC[1:J1,]
+PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+PTrueCBlock3 <- PTrueC[(J1+J2+1):(J1+J2+J3),]
+
+#3 blocks, 5 components:\
+#1 1 0 0 1\
+#1 0 1 1 0\
+#1 1 0 1 1\
+PTrueCBlock1[, c(3, 4)] <- 0
+PTrueCBlock2[, c(2, 5)] <- 0
+PTrueCBlock3[, 3] <- 0
+PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2, PTrueCBlock3)
+
+XTrue <- Ttrue %*% t(PTrueCnew)
+SSXtrue <- sum(XTrue ^ 2)
+
+Noise <- matrix(rnorm(I*(J1+J2+J3), mean = 0, sd = 1), I, J1+J2+J3)
+SSNoise <- sum(Noise ^ 2)
+g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+NoiseNew <- g*Noise
+SSNoiseNew <- sum(NoiseNew ^ 2)
+Xgenerate <- XTrue + NoiseNew
+SSXgenerate <- sum(Xgenerate ^ 2)
+NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+```
+## use VAF to identify number of components
+Given the data, we generally do not know how many components there are, thus, we can try a few numbers, say R=10.
+```{r}
+RSCA::VAF(Xgenerate, Jk, R=10)
+```
+The results suggest that R=5, which is correct.
+
+## use DISCOsca to identify common distictive processes.
+```{r, eval=FALSE}
+results <- RSCA::DISCOsca(Xgenerate, R=5, Jk)
+```
+DISCOsca is skipped, because it takes too much time to run. 
+
+## use pca_gca to identify common distictive processes.
+```{r, eval=FALSE}
+results <- RSCA::pca_gca(Xgenerate, Jk)
+```
+The number of components in each block are: 3 3 4
+There are in total 1 common components in the concatenated data, which is correct. 
+
+# situation 5, 2 common components, 3 distinctive components, 3 blocks
+3 blocks, 5 components:\
+1 1 0 0 1\
+1 1 1 1 0\
+1 1 0 1 1\
+
+```{r}
+set.seed(112)
+
+I <- 28
+J1 <- 44
+J2 <-44
+J3 <- 44
+Jk <- c(J1, J2, J3)
+sumJk <- sum(J1 + J2 + J3)
+R <- 5
+Comm <- 1
+
+PropNoise <- 0.05
+Perc0 <- 0.3
+
+DATA1 <- matrix(rnorm(I*J1, mean = 0, sd = 1), I, J1)
+DATA2 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J2)
+DATA3 <- matrix(rnorm(I*J2, mean = 0, sd = 1), I, J3)
+DATA <- cbind(DATA1, DATA2, DATA3)
+
+svddata <- svd(DATA, R, R)
+Ttrue <- svddata$u
+PTrueC <- as.matrix(svddata$v) %*% diag(svddata$d[1:R])   #note that only the first R eigen values are needed.
+
+PTrueCBlock1 <- PTrueC[1:J1,]
+PTrueCBlock2 <- PTrueC[(J1+1):(J1+J2),]
+PTrueCBlock3 <- PTrueC[(J1+J2+1):(J1+J2+J3),]
+
+#3 blocks, 5 components:\
+#1 1 0 0 1\
+#1 1 1 1 0\
+#1 1 0 1 1\
+PTrueCBlock1[, c(3, 4)] <- 0
+PTrueCBlock2[, 5] <- 0
+PTrueCBlock3[, 3] <- 0
+PTrueCnew <- rbind(PTrueCBlock1, PTrueCBlock2, PTrueCBlock3)
+
+XTrue <- Ttrue %*% t(PTrueCnew)
+SSXtrue <- sum(XTrue ^ 2)
+
+Noise <- matrix(rnorm(I*(J1+J2+J3), mean = 0, sd = 1), I, J1+J2+J3)
+SSNoise <- sum(Noise ^ 2)
+g <- sqrt(PropNoise*SSXtrue/(SSNoise-PropNoise*SSNoise))
+NoiseNew <- g*Noise
+SSNoiseNew <- sum(NoiseNew ^ 2)
+Xgenerate <- XTrue + NoiseNew
+SSXgenerate <- sum(Xgenerate ^ 2)
+NoiseVSgenerate <- SSNoiseNew/SSXgenerate
+```
+
+## use VAF to identify number of components
+Given the data, we generally do not know how many components there are, thus, we can try a few numbers, say R=10.
+```{r}
+RSCA::VAF(Xgenerate, Jk, R=10)
+```
+The results suggest that R=5, which is correct.
+
+## use DISCOsca to identify common distictive processes.
+```{r, eval=FALSE}
+results <- RSCA::DISCOsca(Xgenerate, R=5, Jk)
+```
+DISCOsca is skipped, because it takes too much time to run. 
+
+## use pca_gca to identify common distictive processes.
+```{r, eval=FALSE}
+results <- RSCA::pca_gca(Xgenerate, Jk)
+```
+The number of components in each block are: 3 4 4
+There are in total 2 common components in the concatenated data, which is correct.
