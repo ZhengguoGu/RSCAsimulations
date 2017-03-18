@@ -403,8 +403,8 @@ NRSTARTS <- 20
 Ndataset <- 50
 MAXITER <- 400
 
-LASSO <- .55 #.3
-GROUPLASSO <- .3  #.1
+LASSO <- .72#.3
+GROUPLASSO <- .25  #.1
 
 Tucker <- array()
 ProportionComm <- array()
