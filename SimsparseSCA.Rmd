@@ -36,7 +36,7 @@ Jk <- c(J1, J2)
 sumJk <- sum(J1 + J2)
 R <- 5
 
-
+METHOD <- "component"  #or datablock
 PropNoise <- 0.05
 Perc0 <- 0.3
 
@@ -101,7 +101,7 @@ for (Nd in 1:Ndataset){
   SSXgenerate <- sum(Xgenerate ^ 2)
   NoiseVSgenerate <- SSNoiseNew/SSXgenerate
  
-  results <- sparseSCAV1(Xgenerate, Jk, R, LASSO, GROUPLASSO, NRSTARTS = 50)
+  results <- sparseSCA(Xgenerate, Jk, R, LASSO, GROUPLASSO, NRSTARTS = 50, method = "component")
   
 
   Tout3d <- results$Tmatrix
@@ -165,11 +165,8 @@ Ndataset <- 50
 MAXITER <- 400
 
 LASSO <- .35 #.3
-<<<<<<< HEAD
+
 GROUPLASSO <- .2
-=======
-GROUPLASSO <- .1  #.1
->>>>>>> 00015ddf62e6132eb55b4167c3f66c224fa567d1
 
 Tucker <- array()
 ProportionComm <- array()
@@ -225,7 +222,7 @@ for (Nd in 1:Ndataset){
   SSXgenerate <- sum(Xgenerate ^ 2)
   NoiseVSgenerate <- SSNoiseNew/SSXgenerate
  
-  results <- sparseSCA(Xgenerate, Jk, R, LASSO, GROUPLASSO, NRSTARTS = 50)
+  results <- sparseSCA(Xgenerate, Jk, R, LASSO, GROUPLASSO, NRSTARTS = 50, method = "component")
   
 
   Tout3d <- results$Tmatrix
@@ -288,7 +285,7 @@ NRSTARTS <- 20
 Ndataset <- 50
 MAXITER <- 400
 
-LASSO <- .2 #.3
+LASSO <- .3 #.3
 GROUPLASSO <- .1  #.1
 
 Tucker <- array()
@@ -345,7 +342,7 @@ for (Nd in 1:Ndataset){
   SSXgenerate <- sum(Xgenerate ^ 2)
   NoiseVSgenerate <- SSNoiseNew/SSXgenerate
  
-  results <- sparseSCA(Xgenerate, Jk, R, LASSO, GROUPLASSO, NRSTARTS = 50)
+  results <- sparseSCA(Xgenerate, Jk, R, LASSO, GROUPLASSO, NRSTARTS = 50, method = "component")
   
 
   Tout3d <- results$Tmatrix
@@ -407,8 +404,8 @@ NRSTARTS <- 20
 Ndataset <- 50
 MAXITER <- 400
 
-LASSO <- .5#.3
-GROUPLASSO <- .2  #.1
+LASSO <- .4#.3
+GROUPLASSO <- .25  #.1
 
 Tucker <- array()
 ProportionComm <- array()
@@ -464,7 +461,7 @@ for (Nd in 1:Ndataset){
   SSXgenerate <- sum(Xgenerate ^ 2)
   NoiseVSgenerate <- SSNoiseNew/SSXgenerate
  
-  results <- sparseSCA(Xgenerate, Jk, R, LASSO, GROUPLASSO, NRSTARTS = 50)
+  results <- sparseSCA(Xgenerate, Jk, R, LASSO, GROUPLASSO, NRSTARTS = 50, method = "component")
   
 
   Tout3d <- results$Tmatrix
