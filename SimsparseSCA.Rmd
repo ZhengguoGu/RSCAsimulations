@@ -25,7 +25,7 @@ Furthermore, the distinctive components are sparse.\
 (note: sparse distinctive component here means some of the loadings in the distictive
 component are 0's. See the code below.)\
 
-The following code is tested under RSCA v0.3.1
+The following code is tested under RSCA v0.4.1
 ```{r, eval=FALSE}
 
 library(RSCA)
