@@ -10,7 +10,7 @@ output:
 
 The algorithm of sparseSCA.R .... (to be added)\
 
-Install RSCA install.packages(pkgs="RSCA_0.4.0.tar.gz", repos = NULL, type="source")
+Install RSCA install.packages(pkgs="D:/GitHub/RSCA_0.4.1.tar.gz", repos = NULL, type="source")
 
 # General conclusions
 
